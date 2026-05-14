@@ -1,0 +1,6 @@
+route_id,route_name,start_point,end_point,distance_km,base_eta_mins
+R001,Delhi-Gurgaon Expressway,Dhaula Kuan,Rajiv Chowk,28.0,45
+R002,Noida-Greater Noida Expressway,Mahamaya Flyover,Pari Chowk,24.5,30
+R003,Delhi-Meerut Expressway,Nizamuddin Bridge,Meerut,96.0,90
+R004,Outer Ring Road (Delhi),Nehru Place,Janakpuri,22.0,50
+R005,NH-48 (Delhi-Jaipur),Gurgaon Toll Plaza,Manesar,20.0,25
