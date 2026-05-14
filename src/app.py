@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import joblib
 import os
 
 # ============================================================
@@ -142,7 +143,7 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # ============================================================
-# DATA LOADING
+# DATA + MODEL LOADING
 # ============================================================
 @st.cache_data
 def load_datasets():
@@ -156,8 +157,26 @@ def load_datasets():
         pd.read_csv(os.path.join(d, "accident_data.csv")),
     )
 
+@st.cache_resource
+def load_model():
+    """Load the trained Random Forest model and label encoder."""
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    m = os.path.join(base, "models")
+    model = joblib.load(os.path.join(m, "congestion_model.pkl"))
+    le = joblib.load(os.path.join(m, "label_encoder.pkl"))
+    return model, le
+
 
 route_df, traffic_df, toll_df, weather_df, accident_df = load_datasets()
+rf_model, label_encoder = load_model()
+
+# Precompute training data stats for scaling user inputs
+_means = traffic_df[['traffic_volume','average_speed_kmph','distance_km',
+    'base_eta_mins','temperature_celsius','precipitation_mm',
+    'visibility_km','toll_fee_inr']].mean()
+_stds = traffic_df[['traffic_volume','average_speed_kmph','distance_km',
+    'base_eta_mins','temperature_celsius','precipitation_mm',
+    'visibility_km','toll_fee_inr']].std()
 
 
 # ============================================================
@@ -177,7 +196,7 @@ def kpi_card(label, value, delay_idx=0):
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR — Route Controls + AI Prediction Inputs
 # ============================================================
 st.sidebar.markdown(
 "<h2 style='color:#00ffcc; font-family:Orbitron; text-align:center;"
@@ -189,19 +208,21 @@ st.sidebar.markdown("---")
 
 selected_source = st.sidebar.selectbox("🟢 Source", route_df["start_point"].unique())
 selected_dest = st.sidebar.selectbox("🔴 Destination", route_df["end_point"].unique())
-
-st.sidebar.markdown("")
 time_of_day = st.sidebar.slider("⏰ Departure Hour", 0, 23, 8, format="%d:00")
-density_filter = st.sidebar.radio(
-    "🚦 Max Density Tolerance", ["Low", "Medium", "High"], index=2
-)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🤖 AI Prediction Inputs**")
+user_volume = st.sidebar.slider("🚗 Traffic Volume", 40, 850, 200)
+user_speed = st.sidebar.slider("🏎️ Avg Speed (km/h)", 5, 95, 45)
+user_weather = st.sidebar.selectbox("🌦️ Weather", ["Clear", "Partly Cloudy", "Overcast", "Fog", "Light Rain", "Heavy Rain"])
+user_accident = st.sidebar.selectbox("💥 Accident Severity", ["None", "Minor", "Major", "Severe"])
 
 st.sidebar.markdown("---")
 st.sidebar.success("🧠 AI Engine **ONLINE**\n\n🎯 Model Accuracy: **99.40 %**")
 
 
 # ============================================================
-# DYNAMIC LOGIC
+# DYNAMIC LOGIC + REAL AI PREDICTION
 # ============================================================
 matches = route_df[
     (route_df["start_point"] == selected_source)
@@ -211,10 +232,51 @@ sel = matches.iloc[0] if not matches.empty else route_df.iloc[0]
 
 is_peak = (8 <= time_of_day <= 11) or (17 <= time_of_day <= 20)
 base_eta = int(sel["base_eta_mins"])
-eta = int(base_eta * 1.6) if is_peak else int(base_eta * 1.1)
-cong_label = "HIGH" if is_peak else "MEDIUM"
 toll_est = 150 if is_peak else 80
-ai_conf = "91.2 %" if is_peak else "98.7 %"
+
+# --- Map user inputs to numeric values ---
+weather_map = {"Clear": 0, "Partly Cloudy": 1, "Overcast": 2, "Fog": 3, "Light Rain": 3, "Heavy Rain": 5}
+accident_map = {"None": 0, "Minor": 1, "Major": 3, "Severe": 5}
+w_sev = weather_map[user_weather]
+a_imp = accident_map[user_accident]
+
+# --- Build 15-feature vector (same order as training) ---
+def scale(val, col):
+    return (val - _means[col]) / _stds[col]
+
+route_idx = list(route_df["route_id"]).index(sel["route_id"])
+features = np.array([[
+    route_idx,                          # route_id_encoded
+    time_of_day,                        # hour
+    2,                                  # day_of_week (Wed default)
+    int(is_peak),                       # is_peak_hour
+    w_sev,                              # weather_severity
+    a_imp,                              # accident_impact
+    scale(user_volume, 'traffic_volume'),
+    scale(user_speed, 'average_speed_kmph'),
+    scale(sel['distance_km'], 'distance_km'),
+    scale(base_eta, 'base_eta_mins'),
+    scale(25.0, 'temperature_celsius'),
+    scale(0.0, 'precipitation_mm'),
+    scale(8.0, 'visibility_km'),
+    scale(float(toll_est), 'toll_fee_inr'),
+    int(is_peak),                       # surge_pricing_active
+]])
+
+# --- Run model prediction ---
+prediction = rf_model.predict(features)[0]
+probabilities = rf_model.predict_proba(features)[0]
+cong_label = label_encoder.inverse_transform([prediction])[0].upper()
+confidence = float(probabilities.max()) * 100
+ai_conf = f"{confidence:.1f} %"
+
+# --- Dynamic ETA based on predicted congestion ---
+if cong_label == "HIGH":
+    eta = int(base_eta * 1.6)
+elif cong_label == "MEDIUM":
+    eta = int(base_eta * 1.2)
+else:
+    eta = int(base_eta * 1.05)
 
 
 # ============================================================
@@ -286,6 +348,54 @@ ai_html = (
     '</div>'
 )
 st.markdown(ai_html, unsafe_allow_html=True)
+
+
+# ============================================================
+# SECTION 2B — AI PREDICTION ENGINE (model output)
+# ============================================================
+st.markdown("### 🤖 AI PREDICTION ENGINE")
+
+# Show colored alert based on predicted congestion
+if cong_label == "HIGH":
+    st.error(f"🚨 **Prediction: HIGH Congestion** — Model confidence: {ai_conf}")
+elif cong_label == "MEDIUM":
+    st.warning(f"⚠️ **Prediction: MEDIUM Congestion** — Model confidence: {ai_conf}")
+else:
+    st.success(f"✅ **Prediction: LOW Congestion** — Model confidence: {ai_conf}")
+
+# Probability breakdown using native st.columns
+prob_cols = st.columns(3)
+class_names = label_encoder.classes_
+prob_colors = {"High": "🔴", "Low": "🟢", "Medium": "🟡"}
+for i, cls in enumerate(class_names):
+    pct = probabilities[i] * 100
+    with prob_cols[i]:
+        st.metric(
+            label=f"{prob_colors.get(cls, '')} {cls} Probability",
+            value=f"{pct:.1f} %",
+        )
+
+# Dynamic reasoning text
+reasons = []
+if user_speed < 20:
+    reasons.append("very low avg speed indicates standstill traffic")
+elif user_speed < 40:
+    reasons.append("below-average speed suggests slowdowns")
+else:
+    reasons.append("healthy speed indicates smooth flow")
+if w_sev >= 3:
+    reasons.append(f"{user_weather} reduces visibility and road grip")
+if a_imp >= 3:
+    reasons.append(f"{user_accident} accident blocks lanes")
+if is_peak:
+    reasons.append(f"{time_of_day}:00 falls in rush-hour window")
+if user_volume > 400:
+    reasons.append("high vehicle density on this corridor")
+
+reasoning_text = ". ".join(reasons).capitalize() + "."
+st.info(f"**🧠 Prediction Reasoning:** {reasoning_text}")
+
+st.markdown("---")
 
 
 # ============================================================
