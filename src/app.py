@@ -30,15 +30,25 @@ CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap');
 
-/* ---- Base ---- */
+/* ======== BASE ======== */
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 #MainMenu, footer, header { visibility: hidden; }
 
-/* ---- Animated gradient background ---- */
+/* ======== ANIMATED BACKGROUND + GRID OVERLAY ======== */
 .stApp {
-background: linear-gradient(135deg, #020617 0%, #0a1628 40%, #0d1f3c 70%, #020617 100%);
-background-size: 400% 400%;
-animation: gradientShift 15s ease infinite;
+background: linear-gradient(135deg, #020617 0%, #0a1628 35%, #0f1d35 65%, #020617 100%);
+background-size: 300% 300%;
+animation: gradientShift 20s ease infinite;
+}
+.stApp::before {
+content: "";
+position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+background-image:
+linear-gradient(rgba(0,255,204,0.015) 1px, transparent 1px),
+linear-gradient(90deg, rgba(0,255,204,0.015) 1px, transparent 1px);
+background-size: 60px 60px;
+pointer-events: none;
+z-index: 0;
 }
 @keyframes gradientShift {
 0%   { background-position: 0% 50%; }
@@ -46,102 +56,179 @@ animation: gradientShift 15s ease infinite;
 100% { background-position: 0% 50%; }
 }
 
-/* ---- Sidebar ---- */
+/* ======== SIDEBAR ======== */
 section[data-testid="stSidebar"] {
-background: rgba(5, 10, 20, 0.85) !important;
-backdrop-filter: blur(20px) !important;
-border-right: 1px solid rgba(0,255,204,0.12) !important;
+background: linear-gradient(180deg, rgba(5,12,25,0.95) 0%, rgba(8,18,38,0.92) 100%) !important;
+backdrop-filter: blur(24px) !important;
+border-right: 1px solid rgba(0,255,204,0.1) !important;
+}
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stSlider label,
+section[data-testid="stSidebar"] .stRadio label {
+color: #8ab4cc !important;
+font-weight: 600 !important;
+letter-spacing: 0.5px;
 }
 
-/* ---- Section headers (h3) ---- */
+/* ======== SECTION HEADERS (h3) ======== */
 h3 {
 font-family: 'Orbitron', sans-serif !important;
 color: #e0f0ff !important;
-letter-spacing: 1.5px !important;
-font-size: 20px !important;
-border-bottom: 1px solid rgba(0,255,204,0.15);
-padding-bottom: 10px !important;
-margin-top: 30px !important;
+letter-spacing: 2px !important;
+font-size: 19px !important;
+padding-bottom: 12px !important;
+margin-top: 36px !important;
+margin-bottom: 20px !important;
+border-bottom: none !important;
+position: relative;
+}
+h3::after {
+content: "";
+position: absolute; bottom: 0; left: 0;
+width: 80px; height: 3px;
+background: linear-gradient(90deg, #00ffcc, transparent);
+border-radius: 2px;
 }
 
-/* ---- Glassmorphism metric cards ---- */
+/* ======== GLASSMORPHISM KPI CARDS ======== */
 .glass-card {
-background: rgba(10, 20, 40, 0.45);
-backdrop-filter: blur(18px);
--webkit-backdrop-filter: blur(18px);
-border: 1px solid rgba(0, 255, 204, 0.18);
-border-radius: 18px;
-padding: 28px 20px;
+background: linear-gradient(145deg, rgba(10,22,45,0.55), rgba(5,15,35,0.4));
+backdrop-filter: blur(20px);
+-webkit-backdrop-filter: blur(20px);
+border: 1px solid rgba(0,255,204,0.12);
+border-radius: 20px;
+padding: 30px 22px;
 text-align: center;
-box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+box-shadow:
+0 8px 32px rgba(0,0,0,0.5),
+inset 0 1px 0 rgba(255,255,255,0.04),
+inset 0 -1px 0 rgba(0,0,0,0.2);
 transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 animation: cardFadeIn 0.7s ease-out forwards;
 opacity: 0;
 transform: translateY(24px);
+position: relative;
+overflow: hidden;
 }
+.glass-card::before {
+content: "";
+position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+transition: left 0.6s;
+}
+.glass-card:hover::before { left: 150%; }
 .glass-card:hover {
-transform: translateY(-6px) scale(1.03);
-border-color: rgba(0, 255, 204, 0.5);
-box-shadow: 0 16px 48px rgba(0, 255, 204, 0.15), inset 0 1px 0 rgba(255,255,255,0.1);
+transform: translateY(-8px) scale(1.03);
+border-color: rgba(0,255,204,0.45);
+box-shadow:
+0 20px 60px rgba(0,255,204,0.12),
+0 0 30px rgba(0,255,204,0.06),
+inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .card-label {
-color: #7b9ab8;
-font-size: 12px;
+color: #6a8faa;
+font-size: 11px;
 font-weight: 700;
 text-transform: uppercase;
-letter-spacing: 2.5px;
-margin-bottom: 12px;
+letter-spacing: 3px;
+margin-bottom: 14px;
 }
 .card-value {
 font-family: 'Orbitron', sans-serif;
-font-size: 34px;
+font-size: 32px;
 font-weight: 900;
-background: linear-gradient(90deg, #00ffcc, #00aaff);
+background: linear-gradient(135deg, #00ffcc 0%, #00aaff 50%, #0077ff 100%);
 -webkit-background-clip: text;
 -webkit-text-fill-color: transparent;
 line-height: 1.2;
 }
 
-/* ---- Animations ---- */
+/* ======== ANIMATIONS ======== */
 @keyframes cardFadeIn {
 to { opacity: 1; transform: translateY(0); }
 }
 @keyframes glowPulse {
-0%, 100% { box-shadow: 0 0 8px rgba(0,255,204,0.08); }
-50%      { box-shadow: 0 0 20px rgba(0,255,204,0.2); }
+0%, 100% { box-shadow: 0 0 10px rgba(0,255,204,0.05); }
+50%      { box-shadow: 0 0 25px rgba(0,255,204,0.18); }
 }
 
-/* ---- AI Recommendation Box ---- */
+/* ======== AI RECOMMENDATION BOX ======== */
 .ai-box {
-background: linear-gradient(135deg, rgba(0,255,204,0.07) 0%, rgba(0,136,255,0.04) 100%);
-backdrop-filter: blur(12px);
+background: linear-gradient(135deg, rgba(0,255,204,0.06) 0%, rgba(0,100,255,0.03) 100%);
+backdrop-filter: blur(14px);
 border-left: 5px solid #00ffcc;
-border-radius: 0 18px 18px 0;
-padding: 28px;
-margin: 12px 0 36px 0;
-box-shadow: 0 10px 36px rgba(0,0,0,0.5);
+border-radius: 0 20px 20px 0;
+padding: 30px;
+margin: 16px 0 40px 0;
+box-shadow: 0 12px 40px rgba(0,0,0,0.5);
 animation: glowPulse 4s infinite;
-border-top: 1px solid rgba(0,255,204,0.1);
-border-bottom: 1px solid rgba(0,255,204,0.1);
-border-right: 1px solid rgba(0,255,204,0.1);
+border-top: 1px solid rgba(0,255,204,0.08);
+border-bottom: 1px solid rgba(0,255,204,0.08);
+border-right: 1px solid rgba(0,255,204,0.08);
 }
 
-/* ---- Dataframe styling ---- */
-.stDataFrame { border-radius: 12px; overflow: hidden; }
-
-/* ---- Alert boxes ---- */
-div[data-testid="stAlert"] {
-border-radius: 12px !important;
-backdrop-filter: blur(8px);
-}
-
-/* ---- Plotly chart containers ---- */
-div[data-testid="stPlotlyChart"] {
-background: rgba(5,12,25,0.3);
-border: 1px solid rgba(255,255,255,0.04);
+/* ======== NATIVE st.metric STYLING ======== */
+div[data-testid="stMetric"] {
+background: rgba(10,20,40,0.35);
+backdrop-filter: blur(12px);
+border: 1px solid rgba(255,255,255,0.06);
 border-radius: 14px;
-padding: 8px;
+padding: 16px 20px;
 }
+div[data-testid="stMetric"] label {
+color: #6a8faa !important;
+font-weight: 700 !important;
+letter-spacing: 1px;
+}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+color: #00ffcc !important;
+font-family: 'Orbitron', sans-serif !important;
+}
+
+/* ======== DATAFRAME ======== */
+.stDataFrame {
+border-radius: 14px;
+overflow: hidden;
+border: 1px solid rgba(0,255,204,0.08) !important;
+}
+
+/* ======== ALERT BOXES ======== */
+div[data-testid="stAlert"] {
+border-radius: 14px !important;
+backdrop-filter: blur(10px);
+border: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+/* ======== PLOTLY CHARTS ======== */
+div[data-testid="stPlotlyChart"] {
+background: rgba(5,12,25,0.25);
+border: 1px solid rgba(0,255,204,0.06);
+border-radius: 16px;
+padding: 12px;
+transition: border-color 0.3s;
+}
+div[data-testid="stPlotlyChart"]:hover {
+border-color: rgba(0,255,204,0.15);
+}
+
+/* ======== HORIZONTAL RULES ======== */
+hr {
+border: none !important;
+height: 1px !important;
+background: linear-gradient(90deg, transparent, rgba(0,255,204,0.15), transparent) !important;
+margin: 30px 0 !important;
+}
+
+/* ======== SCROLLBAR ======== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #020617; }
+::-webkit-scrollbar-thumb {
+background: linear-gradient(180deg, #00ffcc, #0077ff);
+border-radius: 3px;
+}
+
+/* ======== COLUMN GAP SPACING ======== */
+div[data-testid="stHorizontalBlock"] { gap: 20px !important; }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
