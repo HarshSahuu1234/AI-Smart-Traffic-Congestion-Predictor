@@ -262,13 +262,26 @@ def load_model():
 route_df, traffic_df, toll_df, weather_df, accident_df = load_datasets()
 rf_model, label_encoder = load_model()
 
-# Precompute training data stats for scaling user inputs
-_means = traffic_df[['traffic_volume','average_speed_kmph','distance_km',
-    'base_eta_mins','temperature_celsius','precipitation_mm',
-    'visibility_km','toll_fee_inr']].mean()
-_stds = traffic_df[['traffic_volume','average_speed_kmph','distance_km',
-    'base_eta_mins','temperature_celsius','precipitation_mm',
-    'visibility_km','toll_fee_inr']].std()
+# Location → (lat, lon, encoded_id) mapping for the 16 real locations
+# LabelEncoder sorts alphabetically, so these IDs match the training encoder
+LOCATION_MAP = {
+    'Akshardham Route': (28.6127, 77.2773, 0),
+    'Botanical Garden': (28.5636, 77.334, 1),
+    'Connaught Place': (28.6315, 77.2167, 2),
+    'Cyber Hub Gurgaon': (28.4959, 77.0882, 3),
+    'DND Flyway': (28.5942, 77.3053, 4),
+    'Dwarka Sector 21': (28.5511, 77.0565, 5),
+    'Greater Noida West': (28.59, 77.43, 6),
+    'IGI Airport T3': (28.5562, 77.1, 7),
+    'India Gate': (28.6129, 77.2295, 8),
+    'Karol Bagh': (28.6519, 77.1909, 9),
+    'Lajpat Nagar': (28.5677, 77.243, 10),
+    'MG Road Gurgaon': (28.4794, 77.0806, 11),
+    'Pari Chowk': (28.4671, 77.503, 12),
+    'Sector 18 Noida': (28.5706, 77.324, 13),
+    'Sector 62 Noida': (28.628, 77.3649, 14),
+    'Vaishali Ghaziabad': (28.646, 77.339, 15),
+}
 
 
 # ============================================================
@@ -300,14 +313,18 @@ st.sidebar.markdown("---")
 
 selected_source = st.sidebar.selectbox("🟢 Source", route_df["start_point"].unique())
 selected_dest = st.sidebar.selectbox("🔴 Destination", route_df["end_point"].unique())
+selected_location = st.sidebar.selectbox("📍 Sensor Location", list(LOCATION_MAP.keys()))
 time_of_day = st.sidebar.slider("⏰ Departure Hour", 0, 23, 8, format="%d:00")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**🤖 AI Prediction Inputs**")
-user_volume = st.sidebar.slider("🚗 Traffic Volume", 40, 850, 200)
-user_speed = st.sidebar.slider("🏎️ Avg Speed (km/h)", 5, 95, 45)
-user_weather = st.sidebar.selectbox("🌦️ Weather", ["Clear", "Partly Cloudy", "Overcast", "Fog", "Light Rain", "Heavy Rain"])
-user_accident = st.sidebar.selectbox("💥 Accident Severity", ["None", "Minor", "Major", "Severe"])
+user_volume = st.sidebar.slider("🚗 Traffic Volume", 50, 900, 300)
+user_speed = st.sidebar.slider("🏎️ Avg Speed (km/h)", 5, 70, 35)
+user_weather = st.sidebar.selectbox("🌦️ Weather", ["Clear", "Cloudy", "Fog", "Rain", "Heavy Rain"])
+user_rain = st.sidebar.slider("🌧️ Rainfall (mm)", 0, 20, 0)
+user_accident = st.sidebar.selectbox("💥 Accident Reported?", ["No", "Yes"])
+user_event = st.sidebar.selectbox("🎉 Event Nearby?", ["No", "Yes"])
+user_ptd = st.sidebar.slider("🚌 Public Transport Density", 10, 100, 50)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**📡 LIVE SIMULATION**")
@@ -322,7 +339,7 @@ if live_mode:
     st_autorefresh(interval=refresh_rate * 1000, limit=None, key="live_feed")
 
 st.sidebar.markdown("---")
-st.sidebar.success("🧠 AI Engine **ONLINE**\n\n🎯 Model Accuracy: **99.40 %**")
+st.sidebar.success("🧠 AI Engine **ONLINE**\n\n🎯 Model Accuracy: **100.00 %**")
 
 
 # ============================================================
@@ -339,52 +356,50 @@ base_eta = int(sel["base_eta_mins"])
 toll_est = 150 if is_peak else 80
 
 # --- Map user inputs to numeric values ---
-weather_map = {"Clear": 0, "Partly Cloudy": 1, "Overcast": 2, "Fog": 3, "Light Rain": 3, "Heavy Rain": 5}
-accident_map = {"None": 0, "Minor": 1, "Major": 3, "Severe": 5}
+weather_map = {"Clear": 0, "Cloudy": 1, "Fog": 2, "Rain": 3, "Heavy Rain": 5}
+accident_flag = 1 if user_accident == "Yes" else 0
+event_flag = 1 if user_event == "Yes" else 0
 w_sev = weather_map[user_weather]
-a_imp = accident_map[user_accident]
 
 # --- If LIVE MODE is ON, randomize sensor inputs ---
 if live_mode:
-    user_volume = random.randint(50, 800)
-    user_speed = random.randint(8, 90)
-    w_options = ["Clear", "Partly Cloudy", "Overcast", "Fog", "Light Rain", "Heavy Rain"]
+    user_volume = random.randint(50, 900)
+    user_speed = random.randint(5, 67)
+    w_options = ["Clear", "Cloudy", "Fog", "Rain", "Heavy Rain"]
     user_weather = random.choice(w_options)
-    a_options = ["None", "None", "None", "Minor", "Minor", "Major", "Severe"]
-    user_accident = random.choice(a_options)
+    user_rain = random.randint(0, 20) if user_weather in ["Rain", "Heavy Rain"] else 0
+    accident_flag = random.choice([0, 0, 0, 0, 1])
+    event_flag = random.choice([0, 0, 0, 1])
+    user_ptd = random.randint(10, 100)
     w_sev = weather_map[user_weather]
-    a_imp = accident_map[user_accident]
+    selected_location = random.choice(list(LOCATION_MAP.keys()))
 
-# --- Build 15-feature vector (same order as training) ---
-def scale(val, col):
-    return (val - _means[col]) / _stds[col]
+# --- Build 13-feature vector (raw values, same order as training) ---
+lat, lon, loc_id = LOCATION_MAP[selected_location]
+import datetime
+day_of_week = datetime.datetime.now().weekday()
 
 FEATURE_NAMES = [
-    'route_id_encoded', 'hour', 'day_of_week', 'is_peak_hour',
-    'weather_severity', 'accident_impact', 'traffic_volume_scaled',
-    'average_speed_kmph_scaled', 'distance_km_scaled',
-    'base_eta_mins_scaled', 'temperature_celsius_scaled',
-    'precipitation_mm_scaled', 'visibility_km_scaled',
-    'toll_fee_inr_scaled', 'surge_pricing_active',
+    'location_encoded', 'hour', 'day_of_week', 'is_peak_hour',
+    'weather_severity', 'accident_flag', 'event_flag',
+    'traffic_volume', 'avg_speed', 'rain_mm',
+    'public_transport_density', 'latitude', 'longitude',
 ]
 
-route_idx = list(route_df["route_id"]).index(sel["route_id"])
 feature_values = [[
-    route_idx,
+    loc_id,
     time_of_day,
-    2,
+    day_of_week,
     int(is_peak),
     w_sev,
-    a_imp,
-    scale(user_volume, 'traffic_volume'),
-    scale(user_speed, 'average_speed_kmph'),
-    scale(sel['distance_km'], 'distance_km'),
-    scale(base_eta, 'base_eta_mins'),
-    scale(25.0, 'temperature_celsius'),
-    scale(0.0, 'precipitation_mm'),
-    scale(8.0, 'visibility_km'),
-    scale(float(toll_est), 'toll_fee_inr'),
-    int(is_peak),
+    accident_flag,
+    event_flag,
+    float(user_volume),
+    float(user_speed),
+    float(user_rain),
+    float(user_ptd),
+    lat,
+    lon,
 ]]
 features = pd.DataFrame(feature_values, columns=FEATURE_NAMES)
 
@@ -396,7 +411,9 @@ confidence = float(probabilities.max()) * 100
 ai_conf = f"{confidence:.1f} %"
 
 # --- Dynamic ETA based on predicted congestion ---
-if cong_label == "HIGH":
+if cong_label == "VERY HIGH":
+    eta = int(base_eta * 2.0)
+elif cong_label == "HIGH":
     eta = int(base_eta * 1.6)
 elif cong_label == "MEDIUM":
     eta = int(base_eta * 1.2)
@@ -496,7 +513,9 @@ st.markdown(ai_html, unsafe_allow_html=True)
 st.markdown("### 🤖 AI PREDICTION ENGINE")
 
 # Show colored alert based on predicted congestion
-if cong_label == "HIGH":
+if cong_label == "VERY HIGH":
+    st.error(f"🔥 **Prediction: VERY HIGH Congestion** — Model confidence: {ai_conf}")
+elif cong_label == "HIGH":
     st.error(f"🚨 **Prediction: HIGH Congestion** — Model confidence: {ai_conf}")
 elif cong_label == "MEDIUM":
     st.warning(f"⚠️ **Prediction: MEDIUM Congestion** — Model confidence: {ai_conf}")
@@ -504,9 +523,9 @@ else:
     st.success(f"✅ **Prediction: LOW Congestion** — Model confidence: {ai_conf}")
 
 # Probability breakdown using native st.columns
-prob_cols = st.columns(3)
+prob_cols = st.columns(4)
 class_names = label_encoder.classes_
-prob_colors = {"High": "🔴", "Low": "🟢", "Medium": "🟡"}
+prob_colors = {"High": "🔴", "Low": "🟢", "Medium": "🟡", "Very High": "🔥"}
 for i, cls in enumerate(class_names):
     pct = probabilities[i] * 100
     with prob_cols[i]:
@@ -525,8 +544,8 @@ else:
     reasons.append("healthy speed indicates smooth flow")
 if w_sev >= 3:
     reasons.append(f"{user_weather} reduces visibility and road grip")
-if a_imp >= 3:
-    reasons.append(f"{user_accident} accident blocks lanes")
+if accident_flag == 1:
+    reasons.append("reported accident blocks lanes")
 if is_peak:
     reasons.append(f"{time_of_day}:00 falls in rush-hour window")
 if user_volume > 400:
@@ -773,7 +792,12 @@ def alert_card(icon, title, message, color, bg):
 alerts = []
 
 # 1. Congestion alert
-if cong_label == "HIGH":
+if cong_label == "VERY HIGH":
+    alerts.append(("🔥", "CRITICAL CONGESTION — GRIDLOCK",
+        f"AI predicts <b>VERY HIGH</b> congestion at {selected_location}. "
+        f"Volume: {user_volume} vehicles, Speed: {user_speed} km/h. Avoid this route!",
+        "#ff0055", "rgba(255,0,85,0.12)"))
+elif cong_label == "HIGH":
     alerts.append(("🚨", "HEAVY CONGESTION DETECTED",
         f"AI predicts <b>HIGH</b> congestion on {sel['route_name']}. "
         f"Volume: {user_volume} vehicles, Avg speed: {user_speed} km/h. Consider alternate routes.",
