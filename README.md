@@ -256,6 +256,8 @@ This project directly addresses **UN Sustainable Development Goal 11** — Susta
 | Name | Role |
 |------|------|
 | **Harsh Sahu** | Full Stack Developer & ML Engineer |
+| **Vyom Dubey** | Full Stack Developer & ML Engineer |
+| **Saransh Umrao** | Full Stack Developer & ML Engineer |
 
 ---
 
