@@ -10,6 +10,7 @@ from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 from streamlit_autorefresh import st_autorefresh
 import os
+import streamlit.components.v1 as components
 
 # ============================================================
 # PAGE CONFIG — must be the very first Streamlit command
@@ -62,6 +63,8 @@ background: linear-gradient(180deg, rgba(5,12,25,0.95) 0%, rgba(8,18,38,0.92) 10
 backdrop-filter: blur(24px) !important;
 border-right: 1px solid rgba(0,255,204,0.1) !important;
 }
+
+/* Sidebar — normal behavior, just styled */
 section[data-testid="stSidebar"] .stSelectbox label,
 section[data-testid="stSidebar"] .stSlider label,
 section[data-testid="stSidebar"] .stRadio label {
@@ -232,6 +235,46 @@ div[data-testid="stHorizontalBlock"] { gap: 20px !important; }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# Inject JavaScript via components.html (st.markdown strips <script> tags)
+# This creates a visible floating "CONTROLS" button when sidebar is collapsed
+components.html("""
+<script>
+(function() {
+    var parentDoc = window.parent.document;
+    function watchSidebar() {
+        var sidebar = parentDoc.querySelector('section[data-testid="stSidebar"]');
+        var toggle = parentDoc.getElementById('nexus-sidebar-btn');
+        if (!sidebar) return;
+        var w = sidebar.getBoundingClientRect().width;
+        if (w < 50 && !toggle) {
+            var b = parentDoc.createElement('div');
+            b.id = 'nexus-sidebar-btn';
+            b.textContent = '\\u2630 CONTROLS';
+            b.style.cssText = 'position:fixed;top:12px;left:12px;z-index:999999;' +
+                'background:rgba(0,30,50,0.97);color:#00ffcc;border:2px solid #00ffcc;' +
+                'border-radius:10px;padding:10px 20px;cursor:pointer;' +
+                'font-family:Orbitron,sans-serif;font-size:13px;letter-spacing:2px;' +
+                'font-weight:700;box-shadow:0 0 20px rgba(0,255,204,0.5);' +
+                'transition:all 0.3s ease;';
+            b.onmouseover = function(){ b.style.boxShadow='0 0 35px rgba(0,255,204,0.8)'; };
+            b.onmouseout = function(){ b.style.boxShadow='0 0 20px rgba(0,255,204,0.5)'; };
+            b.onclick = function() {
+                var exp = parentDoc.querySelector('[data-testid="collapsedControl"] button') ||
+                    parentDoc.querySelector('[data-testid="stSidebarCollapsedControl"] button') ||
+                    parentDoc.querySelector('button[data-testid="stBaseButton-headerNoPadding"]');
+                if (exp) exp.click();
+                setTimeout(function(){ if(parentDoc.getElementById('nexus-sidebar-btn')) parentDoc.getElementById('nexus-sidebar-btn').remove(); }, 300);
+            };
+            parentDoc.body.appendChild(b);
+        } else if (w >= 50 && toggle) {
+            toggle.remove();
+        }
+    }
+    setInterval(watchSidebar, 400);
+})();
+</script>
+""", height=0)
 
 
 # ============================================================
