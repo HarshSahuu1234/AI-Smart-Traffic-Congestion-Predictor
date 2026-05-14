@@ -4,6 +4,9 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import joblib
+import folium
+from folium.plugins import HeatMap
+from streamlit_folium import st_folium
 import os
 
 # ============================================================
@@ -506,6 +509,106 @@ fig3.update_layout(
     height=300,
 )
 st.plotly_chart(fig3, key="heatmap_chart")
+
+st.markdown("---")
+
+
+# ============================================================
+# SECTION 5B — INTERACTIVE FOLIUM TRAFFIC MAP (Enhanced)
+# ============================================================
+st.markdown("### 🗺️ LIVE TRAFFIC MAP — Delhi NCR")
+
+# Real coordinates for each route's key junction point
+ROUTE_COORDS = {
+    "R001": {"lat": 28.5921, "lon": 77.1670, "name": "Delhi-Gurgaon Expressway"},
+    "R002": {"lat": 28.5706, "lon": 77.3260, "name": "Noida-Greater Noida Expressway"},
+    "R003": {"lat": 28.6280, "lon": 77.2430, "name": "Delhi-Meerut Expressway"},
+    "R004": {"lat": 28.5494, "lon": 77.2001, "name": "Outer Ring Road (Delhi)"},
+    "R005": {"lat": 28.4595, "lon": 77.0266, "name": "NH-48 (Delhi-Jaipur)"},
+}
+
+CONG_COLORS = {"Low": "#00ff88", "Medium": "#ffaa00", "High": "#ff3333"}
+CONG_BG     = {"Low": "#0a2e1a", "Medium": "#2e2a0a", "High": "#2e0a0a"}
+
+# Build map with dark tiles and tighter zoom controls
+traffic_map = folium.Map(
+    location=[28.55, 77.15],
+    zoom_start=11,
+    tiles="CartoDB dark_matter",
+    control_scale=True,
+    zoom_control=True,
+    max_zoom=16,
+    min_zoom=9,
+)
+
+heat_points = []
+for _, r in route_df.iterrows():
+    rid = r["route_id"]
+    if rid not in ROUTE_COORDS:
+        continue
+    coord = ROUTE_COORDS[rid]
+    r_eta = int(r["base_eta_mins"] * (1.6 if is_peak else 1.1))
+    r_cong = "High" if is_peak and rid in ["R001", "R004"] else (
+        "Medium" if is_peak else "Low"
+    )
+    color = CONG_COLORS[r_cong]
+    bg = CONG_BG[r_cong]
+
+    # Styled HTML popup card
+    popup_html = (
+        f'<div style="font-family:Inter,sans-serif; background:{bg};'
+        f' border:1px solid {color}; border-radius:10px; padding:12px 16px;'
+        f' min-width:200px; color:#fff;">'
+        f'<div style="font-size:14px; font-weight:700; color:{color};'
+        f' margin-bottom:8px; letter-spacing:1px;">{coord["name"]}</div>'
+        f'<div style="font-size:12px; color:#ccc; line-height:1.8;">'
+        f'<b>Status:</b> <span style="color:{color}; font-weight:700;">{r_cong}</span><br>'
+        f'<b>ETA:</b> {r_eta} min<br>'
+        f'<b>Distance:</b> {r["distance_km"]} km<br>'
+        f'<b>Weather:</b> {user_weather}</div></div>'
+    )
+
+    # Pulsing CSS marker for High congestion, solid for others
+    if r_cong == "High":
+        marker_html = (
+            f'<div style="width:24px; height:24px; border-radius:50%;'
+            f' background:{color}; opacity:0.85; box-shadow:0 0 12px {color},'
+            f' 0 0 24px {color}; animation:pulse 1.5s infinite;"></div>'
+            f'<style>@keyframes pulse{{'
+            f'0%{{transform:scale(1);opacity:0.85}}'
+            f'50%{{transform:scale(1.4);opacity:0.4}}'
+            f'100%{{transform:scale(1);opacity:0.85}}}}</style>'
+        )
+    else:
+        glow = "8px" if r_cong == "Medium" else "4px"
+        marker_html = (
+            f'<div style="width:18px; height:18px; border-radius:50%;'
+            f' background:{color}; opacity:0.8; box-shadow:0 0 {glow} {color};'
+            f' border:2px solid rgba(255,255,255,0.3);"></div>'
+        )
+
+    folium.Marker(
+        location=[coord["lat"], coord["lon"]],
+        icon=folium.DivIcon(
+            html=marker_html,
+            icon_size=(24, 24),
+            icon_anchor=(12, 12),
+        ),
+        popup=folium.Popup(popup_html, max_width=280),
+        tooltip=coord["name"],
+    ).add_to(traffic_map)
+
+    intensity = 1.0 if r_cong == "High" else (0.5 if r_cong == "Medium" else 0.15)
+    heat_points.append([coord["lat"], coord["lon"], intensity])
+
+# Enhanced heat layer
+HeatMap(
+    heat_points,
+    radius=45, blur=30, max_zoom=14,
+    gradient={0.2: '#00ff88', 0.5: '#ffaa00', 0.8: '#ff6600', 1.0: '#ff0000'},
+).add_to(traffic_map)
+
+st_folium(traffic_map, width=None, height=480, returned_objects=[])
 
 st.markdown("---")
 
