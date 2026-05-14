@@ -5,8 +5,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import joblib
 import folium
+import random
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
+from streamlit_autorefresh import st_autorefresh
 import os
 
 # ============================================================
@@ -221,6 +223,18 @@ user_weather = st.sidebar.selectbox("🌦️ Weather", ["Clear", "Partly Cloudy"
 user_accident = st.sidebar.selectbox("💥 Accident Severity", ["None", "Minor", "Major", "Severe"])
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("**📡 LIVE SIMULATION**")
+live_mode = st.sidebar.toggle("🔴 Enable Real-Time Feed", value=False)
+refresh_rate = st.sidebar.select_slider(
+    "Refresh Interval", options=[5, 10, 15, 30], value=10,
+    format_func=lambda x: f"{x}s",
+) if live_mode else 10
+
+# Auto-refresh the page when live mode is ON
+if live_mode:
+    st_autorefresh(interval=refresh_rate * 1000, limit=None, key="live_feed")
+
+st.sidebar.markdown("---")
 st.sidebar.success("🧠 AI Engine **ONLINE**\n\n🎯 Model Accuracy: **99.40 %**")
 
 
@@ -243,18 +257,38 @@ accident_map = {"None": 0, "Minor": 1, "Major": 3, "Severe": 5}
 w_sev = weather_map[user_weather]
 a_imp = accident_map[user_accident]
 
+# --- If LIVE MODE is ON, randomize sensor inputs ---
+if live_mode:
+    user_volume = random.randint(50, 800)
+    user_speed = random.randint(8, 90)
+    w_options = ["Clear", "Partly Cloudy", "Overcast", "Fog", "Light Rain", "Heavy Rain"]
+    user_weather = random.choice(w_options)
+    a_options = ["None", "None", "None", "Minor", "Minor", "Major", "Severe"]
+    user_accident = random.choice(a_options)
+    w_sev = weather_map[user_weather]
+    a_imp = accident_map[user_accident]
+
 # --- Build 15-feature vector (same order as training) ---
 def scale(val, col):
     return (val - _means[col]) / _stds[col]
 
+FEATURE_NAMES = [
+    'route_id_encoded', 'hour', 'day_of_week', 'is_peak_hour',
+    'weather_severity', 'accident_impact', 'traffic_volume_scaled',
+    'average_speed_kmph_scaled', 'distance_km_scaled',
+    'base_eta_mins_scaled', 'temperature_celsius_scaled',
+    'precipitation_mm_scaled', 'visibility_km_scaled',
+    'toll_fee_inr_scaled', 'surge_pricing_active',
+]
+
 route_idx = list(route_df["route_id"]).index(sel["route_id"])
-features = np.array([[
-    route_idx,                          # route_id_encoded
-    time_of_day,                        # hour
-    2,                                  # day_of_week (Wed default)
-    int(is_peak),                       # is_peak_hour
-    w_sev,                              # weather_severity
-    a_imp,                              # accident_impact
+feature_values = [[
+    route_idx,
+    time_of_day,
+    2,
+    int(is_peak),
+    w_sev,
+    a_imp,
     scale(user_volume, 'traffic_volume'),
     scale(user_speed, 'average_speed_kmph'),
     scale(sel['distance_km'], 'distance_km'),
@@ -263,8 +297,9 @@ features = np.array([[
     scale(0.0, 'precipitation_mm'),
     scale(8.0, 'visibility_km'),
     scale(float(toll_est), 'toll_fee_inr'),
-    int(is_peak),                       # surge_pricing_active
-]])
+    int(is_peak),
+]]
+features = pd.DataFrame(feature_values, columns=FEATURE_NAMES)
 
 # --- Run model prediction ---
 prediction = rf_model.predict(features)[0]
@@ -300,6 +335,21 @@ st.markdown(
 "Predictive Traffic Analytics &amp; Autonomous Route Optimization</p>",
 unsafe_allow_html=True,
 )
+
+# Show live status banner when simulation is active
+if live_mode:
+    st.markdown(
+    "<div style='text-align:center; padding:8px; margin-bottom:10px;"
+    " background:rgba(255,50,50,0.15); border:1px solid rgba(255,50,50,0.3);"
+    " border-radius:10px;'>"
+    "<span style='color:#ff4444; font-family:Orbitron; font-size:13px;"
+    " letter-spacing:2px;'>"
+    f"\U0001F534 LIVE FEED ACTIVE &mdash; Refreshing every {refresh_rate}s"
+    f" &mdash; Volume: {user_volume} | Speed: {user_speed} km/h"
+    f" | Weather: {user_weather} | Accident: {user_accident}"
+    "</span></div>",
+    unsafe_allow_html=True,
+    )
 
 
 # ============================================================
@@ -422,7 +472,7 @@ for _, r in route_df.iterrows():
         "Congestion": r_cong,
     })
 cmp_df = pd.DataFrame(cmp_rows)
-st.dataframe(cmp_df, use_container_width=True, hide_index=True)
+st.dataframe(cmp_df, hide_index=True)
 
 st.markdown("---")
 
@@ -614,41 +664,87 @@ st.markdown("---")
 
 
 # ============================================================
-# SECTION 6 — LIVE ALERTS
+# SECTION 6 — SMART ALERT CARDS
 # ============================================================
-st.markdown("### ⚠️ LIVE SENSOR TELEMETRY")
+st.markdown("### ⚠️ SMART ALERT SYSTEM")
 
-a1, a2 = st.columns(2)
+def alert_card(icon, title, message, color, bg):
+    """Render a styled HTML alert card. All strings at column 0."""
+    html = (
+        f'<div style="background:{bg}; border-left:5px solid {color};'
+        f' border-radius:0 12px 12px 0; padding:16px 20px;'
+        f' margin-bottom:12px; box-shadow:0 4px 16px rgba(0,0,0,0.3);">'
+        f'<div style="font-size:13px; font-weight:700; color:{color};'
+        f' letter-spacing:1px; margin-bottom:6px;">'
+        f'{icon} {title}</div>'
+        f'<div style="font-size:13px; color:#ccc; line-height:1.6;">'
+        f'{message}</div></div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
 
-with a1:
-    w = weather_df.iloc[-1]
-    cond = w["condition"]
-    if cond in ("Heavy Rain", "Fog"):
-        st.warning(
-            f"🌧️ **Weather Alert:** {cond} — visibility {w['visibility_km']} km. "
-            "ETA may increase."
-        )
-    else:
-        st.info(
-            f"🌤️ **Weather:** {cond} — {w['temperature_celsius']}°C, "
-            f"visibility {w['visibility_km']} km."
-        )
+# Build dynamic alert list based on current state
+alerts = []
 
-with a2:
-    recent = accident_df.tail(3)
-    severe = recent[recent["severity"] == "Severe"]
-    if not severe.empty:
-        a = severe.iloc[0]
-        st.error(
-            f"🚨 **Accident Alert:** Severe incident on {a['route_id']} — "
-            f"{a['vehicles_involved']} vehicles."
-        )
-    else:
-        a = recent.iloc[-1]
-        st.success(
-            f"✅ **Safety:** Last incident was *{a['severity']}* "
-            f"on {a['route_id']}. Roads currently clear."
-        )
+# 1. Congestion alert
+if cong_label == "HIGH":
+    alerts.append(("🚨", "HEAVY CONGESTION DETECTED",
+        f"AI predicts <b>HIGH</b> congestion on {sel['route_name']}. "
+        f"Volume: {user_volume} vehicles, Avg speed: {user_speed} km/h. Consider alternate routes.",
+        "#ff3333", "rgba(255,50,50,0.08)"))
+elif cong_label == "MEDIUM":
+    alerts.append(("⚠️", "MODERATE TRAFFIC AHEAD",
+        f"Traffic density is building on {sel['route_name']}. "
+        f"Current speed: {user_speed} km/h. ETA may fluctuate.",
+        "#ffaa00", "rgba(255,170,0,0.08)"))
+else:
+    alerts.append(("✅", "ROADS CLEAR",
+        f"Smooth traffic flow detected. Avg speed: {user_speed} km/h. "
+        "Enjoy your drive!",
+        "#00ff88", "rgba(0,255,136,0.08)"))
+
+# 2. Weather alert
+if user_weather in ("Heavy Rain", "Fog"):
+    alerts.append(("🌧️", "ADVERSE WEATHER WARNING",
+        f"<b>{user_weather}</b> reported in the area. Reduced visibility and "
+        "wet roads may increase travel time by 15-25%.",
+        "#5588ff", "rgba(85,136,255,0.08)"))
+elif user_weather in ("Light Rain", "Overcast"):
+    alerts.append(("🌦️", "WEATHER ADVISORY",
+        f"<b>{user_weather}</b> conditions detected. Drive with caution. "
+        "Minor delays possible.",
+        "#88aacc", "rgba(136,170,204,0.06)"))
+
+# 3. Accident alert
+if user_accident in ("Major", "Severe"):
+    alerts.append(("💥", "ACCIDENT REPORTED",
+        f"A <b>{user_accident}</b> accident has been reported in the vicinity. "
+        "Emergency services alerted. Expect significant lane closures.",
+        "#ff6644", "rgba(255,102,68,0.08)"))
+elif user_accident == "Minor":
+    alerts.append(("🔶", "MINOR INCIDENT NEARBY",
+        "A minor fender-bender reported. Traffic impact is limited but "
+        "watch for rubbernecking slowdowns.",
+        "#ddaa44", "rgba(221,170,68,0.06)"))
+
+# 4. ETA alert
+if eta > base_eta * 1.4:
+    alerts.append(("⏱️", "ROUTE ETA INCREASED",
+        f"Predicted ETA of <b>{eta} min</b> is {int((eta/base_eta - 1)*100)}% "
+        f"above the base time of {base_eta} min. Heavy conditions detected.",
+        "#cc66ff", "rgba(204,102,255,0.08)"))
+
+# 5. Peak hour alert
+if is_peak:
+    alerts.append(("🕐", "RUSH HOUR ACTIVE",
+        f"Current time ({time_of_day}:00) falls within peak traffic hours. "
+        "Historical data shows 40-60% higher volumes during this window.",
+        "#ff9944", "rgba(255,153,68,0.06)"))
+
+# Render alerts in a 2-column grid
+col_left, col_right = st.columns(2)
+for i, (icon, title, msg, color, bg) in enumerate(alerts):
+    with col_left if i % 2 == 0 else col_right:
+        alert_card(icon, title, msg, color, bg)
 
 
 # ============================================================
